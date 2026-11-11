@@ -1,6 +1,7 @@
 package identity
 
 import (
+ "bytes"
  "crypto/ed25519"
  "crypto/rand"
  "encoding/base64"
@@ -58,7 +59,7 @@ func (s *ChallengeStore) Consume(id string,peer ed25519.PublicKey,connectionID,s
  if ok{delete(s.entries,id)}
  s.mu.Unlock()
  if !ok{return ErrChallengeNotFound}
- if connectionID!=entry.connectionID || sessionID!=entry.sessionID || len(peer)!=ed25519.PublicKeySize || !peer.Equal(entry.peer){
+ if connectionID!=entry.connectionID || sessionID!=entry.sessionID || len(peer)!=ed25519.PublicKeySize || !bytes.Equal(peer,entry.peer){
   return ErrChallengeContext
  }
  return Verify(entry.peer,entry.challenge,signature,s.now())
