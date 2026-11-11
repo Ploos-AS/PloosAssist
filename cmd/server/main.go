@@ -18,6 +18,7 @@ func handler() http.Handler {
  })
  newPairingAPI().routes(mux)
  newAuthAPI().routes(mux)
+ newWSAPI().routes(mux)
  return newRequestGuard(120).wrap(mux)
 }
 
