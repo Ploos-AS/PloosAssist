@@ -4,6 +4,7 @@ package session
 
 import (
  "crypto/rand"
+ "crypto/subtle"
  "encoding/base64"
  "errors"
  "sync"
@@ -78,7 +79,7 @@ func (s *Store) Request(id string)(string,error){
 func (s *Store) Decide(id,hostSecret string,approve bool) error {
  s.mu.Lock();defer s.mu.Unlock()
  p,err:=s.lookup(id);if err!=nil{return err}
- if p.hostSecret!=hostSecret{return ErrUnauthorized}
+ if subtle.ConstantTimeCompare([]byte(p.hostSecret),[]byte(hostSecret))!=1{return ErrUnauthorized}
  if p.State!=AwaitingApproval{return ErrInvalidState}
  if approve {p.State=Approved}else{p.State=Denied}
  return nil
@@ -96,5 +97,5 @@ func (s *Store) Revoke(id,hostSecret string)error{
 func (s *Store) Authorized(id,technicianSecret string)bool{
  s.mu.Lock();defer s.mu.Unlock()
  p,err:=s.lookup(id)
- return err==nil && p.State==Approved && p.technicianSecret!="" && p.technicianSecret==technicianSecret
+ return err==nil && p.State==Approved && p.technicianSecret!="" && subtle.ConstantTimeCompare([]byte(p.technicianSecret),[]byte(technicianSecret))==1
 }
