@@ -37,7 +37,7 @@ func (a *wsAPI)routes(mux *http.ServeMux){
   start,_:=json.Marshal(map[string]string{"type":"challenge","nonce":base64.RawURLEncoding.EncodeToString(ch.Nonce),"challenge_id":challengeID})
   if err:=wsproto.WriteText(rw,start);err!=nil{return}
   if err:=rw.Flush();err!=nil{return}
-  payload,err:=wsproto.ReadText(rw);if err!=nil{return}
+  payload,err:=wsproto.ReadMessage(rw,rw);if err!=nil{return}
   var proof struct{Type string `json:"type"`;Signature string `json:"signature"`}
   if json.Unmarshal(payload,&proof)!=nil||proof.Type!="proof"{return}
   sig,err:=base64.RawURLEncoding.DecodeString(proof.Signature);if err!=nil{return}
