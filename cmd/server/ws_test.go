@@ -2,7 +2,6 @@ package main
 
 import (
  "testing"
- "time"
 
  "github.com/Ploos-AS/PloosAssist/internal/identity"
 )
@@ -22,5 +21,4 @@ func TestWSAPILifecycleStartsEmpty(t *testing.T){
  if n:=a.connections.Count();n!=1{t.Fatalf("registered count: %d",n)}
  a.connections.Close(id)
  if n:=a.connections.Count();n!=0{t.Fatalf("connection leaked: %d",n)}
- _=time.Second
 }
