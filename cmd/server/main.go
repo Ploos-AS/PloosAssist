@@ -17,6 +17,7 @@ func handler() http.Handler {
   _=json.NewEncoder(w).Encode(map[string]string{"status":"ok"})
  })
  newPairingAPI().routes(mux)
+ newAuthAPI().routes(mux)
  return newRequestGuard(120).wrap(mux)
 }
 

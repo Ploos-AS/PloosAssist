@@ -40,7 +40,7 @@ func (g *requestGuard) wrap(next http.Handler)http.Handler {
   w.Header().Set("Cache-Control","no-store")
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Referrer-Policy","no-referrer")
-  if !strings.HasPrefix(r.URL.Path,"/v1/pairings") {
+  if !strings.HasPrefix(r.URL.Path,"/v1/pairings") && !strings.HasPrefix(r.URL.Path,"/v1/auth/") {
    next.ServeHTTP(w,r)
    return
   }
