@@ -46,7 +46,7 @@ func (b *ConsentBridge)Handler()http.Handler{
   w.Header().Set("X-Content-Type-Options","nosniff")
   w.Header().Set("Access-Control-Allow-Origin","")
   host,_,err:=net.SplitHostPort(r.RemoteAddr)
-  if err!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback()||r.Host!=strings.TrimPrefix(b.origin,"http://")||r.Header.Get("Origin")!=b.origin||
+  if err!=nil||net.ParseIP(host)==nil||!net.ParseIP(host).IsLoopback()||r.Host!=strings.TrimPrefix(b.origin,"http://")||(r.Header.Get("Origin")!=b.origin&&(r.Method!="GET"||r.Header.Get("Origin")!=""))||
    r.Header.Get("X-PloosAssist-Token")!=b.token{
    http.Error(w,"forbidden",http.StatusForbidden);return false
   }
