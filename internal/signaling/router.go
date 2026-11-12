@@ -15,11 +15,14 @@ type Router struct {
  connections *Connections
  consent *ConsentPolicy
  destinations map[string]map[string]chan Envelope
+ owners map[string]routerOwner
 }
+
+type routerOwner struct {session string;fingerprint string;queue chan Envelope}
 
 func NewRouter(connections *Connections, consent *ConsentPolicy)(*Router,error){
  if connections==nil||consent==nil{return nil,ErrConsentInvalid}
- return &Router{connections:connections,consent:consent,destinations:make(map[string]map[string]chan Envelope)},nil
+ return &Router{connections:connections,consent:consent,destinations:make(map[string]map[string]chan Envelope),owners:make(map[string]routerOwner)},nil
 }
 
 // Attach associates a previously authenticated, live connection with a
@@ -33,19 +36,22 @@ func (r *Router)Attach(connectionID string)(<-chan Envelope,error){
  if _,exists:=r.destinations[session][fingerprint];exists{return nil,ErrConnectionLimit}
  queue:=make(chan Envelope,16)
  r.destinations[session][fingerprint]=queue
+ r.owners[connectionID]=routerOwner{session:session,fingerprint:fingerprint,queue:queue}
  return queue,nil
 }
 
 // Detach is called on disconnect. The caller must use the original
 // authenticated connection ID, never a user-provided fingerprint.
 func (r *Router)Detach(connectionID string){
- session,fingerprint,err:=r.connections.Identity(connectionID)
- if err!=nil{return}
  r.mu.Lock()
  defer r.mu.Unlock()
- if peers:=r.destinations[session];peers!=nil{
-  delete(peers,fingerprint)
-  if len(peers)==0{delete(r.destinations,session)}
+ owner,ok:=r.owners[connectionID]
+ if !ok{return}
+ delete(r.owners,connectionID)
+ if peers:=r.destinations[owner.session];peers!=nil{
+  // A stale disconnect must never remove a replacement connection's queue.
+  if peers[owner.fingerprint]==owner.queue{delete(peers,owner.fingerprint)}
+  if len(peers)==0{delete(r.destinations,owner.session)}
  }
 }
 
@@ -77,6 +83,9 @@ func (r *Router)CloseSession(sessionID string){
  defer r.mu.Unlock()
  peers:=r.destinations[sessionID]
  delete(r.destinations,sessionID)
+ for connectionID,owner:=range r.owners{
+  if owner.session==sessionID{delete(r.owners,connectionID)}
+ }
  for _,queue:=range peers{
   for {
    select {
