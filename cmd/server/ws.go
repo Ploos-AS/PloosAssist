@@ -218,6 +218,11 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
     // Revocation requires the independent host capability, not merely a
     // claimed role. Terminate both sockets after all in-memory grants close.
     if err:=a.revocation.Revoke(sessionID,action.Capability);err!=nil{a.wsPolicyClose(conn);return}
+    // Revocation state is committed before acknowledging the host.
+    // Closing the session sockets follows immediately after the ACK.
+    ack,_:=json.Marshal(map[string]string{"type":"session_revoked"})
+    _=conn.SetWriteDeadline(time.Now().Add(2*time.Second))
+    _=conn.WriteMessage(websocket.TextMessage,ack)
     a.terminateSession(sessionID)
     return
    default:
