@@ -10,6 +10,7 @@ const footnote = document.querySelector(".footnote");
 let active = null;
 let busy = false;
 let adapter = null;
+let stopped = false;
 function reset(message) {
  active = null;
  approve.disabled = true;
@@ -30,7 +31,7 @@ function validPrompt(prompt) {
   Date.parse(prompt.expiresAt) > Date.now();
 }
 function showPrompt(prompt) {
- if (!adapter || busy || !validPrompt(prompt)) {
+ if (stopped || !adapter || busy || !validPrompt(prompt)) {
   reset("Ingen gyldig forespørsel tilgjengelig.");
   return;
  }
@@ -43,7 +44,7 @@ function showPrompt(prompt) {
  footnote.textContent = "Godkjenning gir ikke skjermdeling eller fjernstyring i denne prototypen.";
 }
 async function decide(approved) {
- if (!adapter || !active || busy) return;
+ if (stopped || !adapter || !active || busy) return;
  const prompt = active;
  if (!validPrompt(prompt)) {
   reset("Forespørselen har utløpt.");
@@ -103,7 +104,7 @@ if (bootstrapToken && /^[A-Za-z0-9_-]{40,64}$/.test(bootstrapToken)) {
  if (window.PloosAssistHostConsent.installTrustedAdapter(adapter)) {
   let lastTicket = "";
   async function poll() {
-   if (document.hidden) return;
+   if (document.hidden || stopped) return;
    try {
     const response = await fetch("/api/consent", {
      credentials:"omit",cache:"no-store",
@@ -133,6 +134,7 @@ if (bootstrapToken && /^[A-Za-z0-9_-]{40,64}$/.test(bootstrapToken)) {
 const stopButton = document.getElementById("stop");
 stopButton.addEventListener("click", async () => {
  if (!bootstrapToken || stopButton.disabled) return;
+ stopped = true;
  stopButton.disabled = true;
  approve.disabled = true;
  deny.disabled = true;
