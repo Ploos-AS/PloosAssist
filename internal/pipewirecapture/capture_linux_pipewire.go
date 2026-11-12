@@ -110,7 +110,12 @@ fail:
  free(c);
  return NULL;
 }
-static int pa_poll(struct pa_capture *c) {return c->received;}
+static int pa_poll(struct pa_capture *c) {
+ pw_thread_loop_lock(c->loop);
+ int received=c->received;
+ pw_thread_loop_unlock(c->loop);
+ return received;
+}
 static void pa_close(struct pa_capture *c) {
  if (!c) return;
  if (c->loop) pw_thread_loop_stop(c->loop);
@@ -157,12 +162,13 @@ func CaptureOne(ctx context.Context,remote *os.File,nodeID uint32,latest *frameb
    // This initial adapter is one-shot; the C callback owns the frame
    // until the stream is stopped and its buffers are copied.
    if C.pa_poll(c)==0{continue}
-   C.pw_thread_loop_stop(c.loop)
-   if c.pixels==nil||c.size==0{return ErrNoFrame}
+   C.pw_thread_loop_lock(c.loop)
+   if c.pixels==nil||c.size==0{C.pw_thread_loop_unlock(c.loop);return ErrNoFrame}
    pixels:=C.GoBytes(unsafe.Pointer(c.pixels),C.int(c.size))
-   return latest.Put(framebuffer.Frame{
-    Width:int(c.width),Height:int(c.height),Stride:int(c.stride),Pixels:pixels,
-   })
+   width,height,stride:=int(c.width),int(c.height),int(c.stride)
+   C.pw_thread_loop_unlock(c.loop)
+   defer clear(pixels)
+   return latest.Put(framebuffer.Frame{Width:width,Height:height,Stride:stride,Pixels:pixels})
   }
  }
 }
