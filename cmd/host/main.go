@@ -59,11 +59,11 @@ func main(){
   select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
  })
  if err!=nil{log.Fatal(err)}
- server:=&http.Server{Handler:bridge.Handler(),ReadHeaderTimeout:5*time.Second}
+ server:=&http.Server{Handler:bridge.UIHandler(),ReadHeaderTimeout:5*time.Second}
  go func(){if err:=server.Serve(listener);err!=nil&&err!=http.ErrServerClosed{log.Printf("local bridge stopped: %v",err);stop()}}()
  defer func(){shutdown,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();_=server.Shutdown(shutdown)}()
- fmt.Println("Local consent API initialized at",origin,"(no browser UI served yet)")
- fmt.Println("Token is intentionally not printed. Remote control remains disabled.")
+ fmt.Println("Local consent dialog:",origin)
+ fmt.Println("Open the local dialog in your browser. Remote control remains disabled.")
  // The event loop exclusively owns the WebSocket, including HTTP decisions.
  ticker:=time.NewTicker(2*time.Second)
  defer ticker.Stop()
