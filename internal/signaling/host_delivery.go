@@ -93,3 +93,16 @@ func (d *HostDelivery)Disconnect(hostConnectionID string){
   d.approvals.Cancel(rec.ticket.SessionID)
  }
 }
+
+// CancelSession removes all pending host prompts for this session.
+func (d *HostDelivery)CancelSession(sessionID string){
+ d.mu.Lock()
+ defer d.mu.Unlock()
+ for id,record:=range d.pending{
+  if record.ticket.SessionID==sessionID{
+   d.events.Cancel(record.ticket.ID)
+   delete(d.pending,id)
+  }
+ }
+ d.approvals.Cancel(sessionID)
+}

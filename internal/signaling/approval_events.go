@@ -72,3 +72,11 @@ func (e *ApprovalEvents)Cancel(ticketID string){
  e.mu.Lock();defer e.mu.Unlock()
  delete(e.pending,ticketID)
 }
+
+// CancelSession invalidates every outstanding one-use ticket for a session.
+func (e *ApprovalEvents)CancelSession(sessionID string){
+ e.mu.Lock();defer e.mu.Unlock()
+ for id,record:=range e.pending{
+  if record.ticket.SessionID==sessionID{delete(e.pending,id)}
+ }
+}
