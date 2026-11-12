@@ -16,9 +16,12 @@ func handler() http.Handler {
   w.Header().Set("Content-Type","application/json")
   _=json.NewEncoder(w).Encode(map[string]string{"status":"ok"})
  })
- newPairingAPI().routes(mux)
+ pairing:=newPairingAPI()
+ ws:=newWSAPI()
+ ws.enrollment=mustEnrollment(pairing.store,ws.connections,ws.roles)
+ pairing.routes(mux)
  newAuthAPI().routes(mux)
- newWSAPI().routes(mux)
+ ws.routes(mux)
  return newRequestGuard(120).wrap(mux)
 }
 
