@@ -60,7 +60,11 @@ func main(){
   select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
  })
  if err!=nil{log.Fatal(err)}
+ share:=newScreenShareAction()
+ defer share.Stop()
+ bridge.SetScreenShare(func()error{return share.Start(ctx)})
  bridge.SetStop(func()error{
+  share.Stop()
   reply:=make(chan error,1)
   select{case stopRequests<-reply:case <-ctx.Done():return ctx.Err()}
   select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
@@ -75,8 +79,9 @@ func main(){
  defer ticker.Stop()
  for{
   select{
-  case <-ctx.Done():bridge.Clear();return
+  case <-ctx.Done():share.Stop();bridge.Clear();return
   case reply:=<-stopRequests:
+   share.Stop()
    bridge.Clear()
    err:=client.Revoke(*hostCapability)
    reply<-err
