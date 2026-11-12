@@ -208,3 +208,54 @@ async function pollScreenShareStatus(){
 }
 void pollScreenShareStatus();
 setInterval(() => void pollScreenShareStatus(),2000);
+
+const previewPanel = document.getElementById("preview-panel");
+const previewImage = document.getElementById("preview-image");
+const previewStatus = document.getElementById("preview-status");
+let previewURL = null;
+let previewBusy = false;
+function clearPreview(){
+ if (previewURL) URL.revokeObjectURL(previewURL);
+ previewURL = null;
+ previewImage.removeAttribute("src");
+ previewPanel.hidden = true;
+}
+async function refreshPreview(){
+ if (stopped || document.hidden || !bootstrapToken || previewBusy) return;
+ previewBusy = true;
+ try {
+  const stateResponse = await fetch("/api/screen-share/status",{
+   credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!stateResponse.ok) throw new Error("status unavailable");
+  const state = await stateResponse.json();
+  if (state.state !== "capturing") {clearPreview();return;}
+  const response = await fetch("/api/screen-share/preview.png",{
+   credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!response.ok) throw new Error("frame unavailable");
+  const blob = await response.blob();
+  if (blob.type !== "image/png" || blob.size > 20*1024*1024)
+   throw new Error("invalid preview");
+  if (stopped) {clearPreview();return;}
+  const url = URL.createObjectURL(blob);
+  const previous = previewURL;
+  previewURL = url;
+  previewImage.src = url;
+  previewPanel.hidden = false;
+  previewStatus.textContent = "Kun lokal forhåndsvisning – ikke sendt til teknikeren.";
+  if (previous) URL.revokeObjectURL(previous);
+ } catch {
+  clearPreview();
+ } finally {
+  previewBusy = false;
+ }
+}
+stopButton.addEventListener("click",clearPreview);
+document.addEventListener("visibilitychange",()=>{
+ if (document.hidden) clearPreview();
+});
+void refreshPreview();
+setInterval(()=>void refreshPreview(),2000);
