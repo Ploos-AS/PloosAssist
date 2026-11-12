@@ -21,6 +21,7 @@ type ConsentBridge struct {
  session string
  pending *PendingConsent
  decide func(string,bool)error
+ stop func()error
 }
 func NewConsentBridge(origin,session string,decide func(string,bool)error)(*ConsentBridge,error){
  if !strings.HasPrefix(origin,"http://127.0.0.1:")||session==""||decide==nil{return nil,errors.New("invalid local consent bridge")}
@@ -37,6 +38,8 @@ func (b *ConsentBridge)Clear(){
  b.mu.Lock();defer b.mu.Unlock()
  b.pending=nil
 }
+// SetStop installs the host-owned session termination callback.
+func (b *ConsentBridge)SetStop(stop func()error){b.mu.Lock();defer b.mu.Unlock();b.stop=stop}
 // Handler is intentionally API-only. A future trusted host process must serve
 // the HTML/JS from the SAME origin and provision the token without URL params.
 func (b *ConsentBridge)Handler()http.Handler{
@@ -52,6 +55,16 @@ func (b *ConsentBridge)Handler()http.Handler{
   }
   return true
  }
+ mux.HandleFunc("POST /api/consent/stop",func(w http.ResponseWriter,r *http.Request){
+  if !guard(w,r){return}
+  b.mu.Lock()
+  defer b.mu.Unlock()
+  if b.stop==nil{http.Error(w,"unavailable",503);return}
+  // Fail closed locally even if the remote server is unreachable.
+  b.pending=nil
+  if err:=b.stop();err!=nil{http.Error(w,"stop failed",502);return}
+  _=json.NewEncoder(w).Encode(map[string]string{"type":"session_stopped"})
+ })
  mux.HandleFunc("GET /api/consent",func(w http.ResponseWriter,r *http.Request){
   if !guard(w,r){return}
   b.mu.Lock();defer b.mu.Unlock()

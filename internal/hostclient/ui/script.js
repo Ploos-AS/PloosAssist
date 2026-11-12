@@ -10,6 +10,7 @@ const footnote = document.querySelector(".footnote");
 let active = null;
 let busy = false;
 let adapter = null;
+let stopped = false;
 function reset(message) {
  active = null;
  approve.disabled = true;
@@ -30,7 +31,7 @@ function validPrompt(prompt) {
   Date.parse(prompt.expiresAt) > Date.now();
 }
 function showPrompt(prompt) {
- if (!adapter || busy || !validPrompt(prompt)) {
+ if (stopped || !adapter || busy || !validPrompt(prompt)) {
   reset("Ingen gyldig forespørsel tilgjengelig.");
   return;
  }
@@ -43,7 +44,7 @@ function showPrompt(prompt) {
  footnote.textContent = "Godkjenning gir ikke skjermdeling eller fjernstyring i denne prototypen.";
 }
 async function decide(approved) {
- if (!adapter || !active || busy) return;
+ if (stopped || !adapter || !active || busy) return;
  const prompt = active;
  if (!validPrompt(prompt)) {
   reset("Forespørselen har utløpt.");
@@ -103,7 +104,7 @@ if (bootstrapToken && /^[A-Za-z0-9_-]{40,64}$/.test(bootstrapToken)) {
  if (window.PloosAssistHostConsent.installTrustedAdapter(adapter)) {
   let lastTicket = "";
   async function poll() {
-   if (document.hidden) return;
+   if (document.hidden || stopped) return;
    try {
     const response = await fetch("/api/consent", {
      credentials:"omit",cache:"no-store",
@@ -129,3 +130,28 @@ if (bootstrapToken && /^[A-Za-z0-9_-]{40,64}$/.test(bootstrapToken)) {
   setInterval(() => void poll(), 2000);
  }
 }
+
+const stopButton = document.getElementById("stop");
+stopButton.addEventListener("click", async () => {
+ if (!bootstrapToken || stopButton.disabled) return;
+ stopped = true;
+ stopButton.disabled = true;
+ approve.disabled = true;
+ deny.disabled = true;
+ active = null;
+ status.textContent = "Avslutter supportøkten …";
+ try {
+  const response = await fetch("/api/consent/stop", {
+   method:"POST",credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!response.ok) throw new Error("stop failed");
+  const result = await response.json();
+  if (result.type !== "session_stopped") throw new Error("invalid stop response");
+  reset("Supportøkten er avsluttet lokalt. Ingen fjernstyring er aktiv.");
+ } catch {
+  reset("Lokal tilgang er stoppet, men serverens tilbakekalling er ikke bekreftet. Lukk klienten.");
+ }
+ // Never enable the controls again in this browser session.
+ stopButton.disabled = true;
+});
