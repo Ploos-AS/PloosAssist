@@ -149,7 +149,7 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
     if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
     continue
    }
-   var action struct{Type string `json:"type"`}
+   var action struct{Type string `json:"type"`;TicketID string `json:"ticket_id"`;Approve *bool `json:"approve"`}
    if json.Unmarshal(payload,&action)!=nil{a.wsPolicyClose(conn);return}
    switch {
    case action.Type=="approval_request"&&enrolledRole==signaling.TechnicianRole:
@@ -179,6 +179,20 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
      "technician_fingerprint":ticket.TechnicianFingerprint,
      "expires_at":ticket.ExpiresAt.UTC().Format(time.RFC3339),
     })
+    if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+   case action.Type=="approval_decide"&&enrolledRole==signaling.HostRole:
+    hostID,_,err:=a.roles.Pair(sessionID)
+    if err!=nil||hostID!=id||action.Approve==nil||action.TicketID==""||len(action.TicketID)>128{
+     a.wsPolicyClose(conn);return
+    }
+    // The ticket is one-use and bound to the verified host connection.
+    // A decision is an explicit host action; retrieval never implies consent.
+    if err:=a.delivery.Decide(id,action.TicketID,*action.Approve);err!=nil{
+     a.wsPolicyClose(conn);return
+    }
+    state:="denied"
+    if *action.Approve{state="approved"}
+    ack,_:=json.Marshal(map[string]string{"type":"approval_decided","state":state})
     if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
    default:
     a.wsPolicyClose(conn);return
