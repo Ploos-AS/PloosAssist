@@ -6,6 +6,8 @@ import (
  "flag"
  "fmt"
  "log"
+ "net"
+ "net/http"
  "os"
  "os/signal"
  "syscall"
@@ -19,6 +21,8 @@ import (
 func main(){
  endpoint:=flag.String("server","ws://127.0.0.1:8080/v1/ws","loopback development server")
  session:=flag.String("session","","development session identifier (required)")
+ hostCapability:=flag.String("host-capability","","development host capability (enables local consent API)")
+ uiAddress:=flag.String("ui-listen","127.0.0.1:0","local consent API listen address")
  flag.Parse()
  if *session==""{log.Fatal("-session is required")}
  key,err:=identity.Generate()
@@ -28,18 +32,53 @@ func main(){
  conn,fingerprint,err:=hostclient.Connect(ctx,*endpoint,*session,key)
  if err!=nil{log.Fatal(err)}
  defer conn.Close()
- fmt.Println("PloosAssist host diagnostic authenticated. Fingerprint:",fingerprint)
- fmt.Println("No approval requests, screen sharing or remote control are supported. Ctrl+C to disconnect.")
- done:=make(chan error,1)
- go func(){
-  for {
-   if _,_,err:=conn.ReadMessage();err!=nil{done<-err;return}
+ fmt.Println("PloosAssist host authenticated. Fingerprint:",fingerprint)
+ if *hostCapability==""{
+  fmt.Println("Identity-only diagnostic. No consent UI, screen sharing or remote control. Ctrl+C to disconnect.")
+  done:=make(chan error,1)
+  go func(){for{if _,_,err:=conn.ReadMessage();err!=nil{done<-err;return}}}()
+  select{
+  case <-ctx.Done():
+   _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.CloseNormalClosure,""),time.Now().Add(time.Second))
+  case err:=<-done:log.Printf("connection ended: %v",err)
   }
- }()
- select{
- case <-ctx.Done():
-  _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.CloseNormalClosure,""),time.Now().Add(time.Second))
- case err:=<-done:
-  log.Printf("connection ended: %v",err)
+  return
+ }
+ listener,err:=net.Listen("tcp",*uiAddress)
+ if err!=nil{log.Fatal(err)}
+ defer listener.Close()
+ if listener.Addr().(*net.TCPAddr).IP==nil||!listener.Addr().(*net.TCPAddr).IP.IsLoopback(){log.Fatal("consent API must bind loopback")}
+ origin:="http://127.0.0.1:"+fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
+ client:=hostclient.NewConsentClient(conn)
+ if err:=client.EnrollHost(*hostCapability);err!=nil{log.Fatal("host enrollment failed: ",err)}
+ type decision struct{ticket string;approve bool;reply chan error}
+ decisions:=make(chan decision)
+ bridge,err:=hostclient.NewConsentBridge(origin,*session,func(ticket string,approve bool)error{
+  reply:=make(chan error,1)
+  select{case decisions<-decision{ticket,approve,reply}:case <-ctx.Done():return ctx.Err()}
+  select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
+ })
+ if err!=nil{log.Fatal(err)}
+ server:=&http.Server{Handler:bridge.Handler(),ReadHeaderTimeout:5*time.Second}
+ go func(){if err:=server.Serve(listener);err!=nil&&err!=http.ErrServerClosed{log.Printf("local bridge stopped: %v",err);stop()}}()
+ defer func(){shutdown,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();_=server.Shutdown(shutdown)}()
+ fmt.Println("Local consent API initialized at",origin,"(no browser UI served yet)")
+ fmt.Println("Token is intentionally not printed. Remote control remains disabled.")
+ // The event loop exclusively owns the WebSocket, including HTTP decisions.
+ ticker:=time.NewTicker(2*time.Second)
+ defer ticker.Stop()
+ for{
+  select{
+  case <-ctx.Done():bridge.Clear();return
+  case d:=<-decisions:
+   err:=client.Decide(d.ticket,d.approve)
+   d.reply<-err
+   if err!=nil{bridge.Clear();log.Printf("host decision failed: %v",err);return}
+   bridge.Clear()
+  case <-ticker.C:
+   pending,ok,err:=client.Check()
+   if err!=nil{bridge.Clear();log.Printf("host connection ended: %v",err);return}
+   if ok{bridge.SetPending(pending)}else{bridge.Clear()}
+  }
  }
 }
