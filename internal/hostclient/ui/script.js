@@ -135,6 +135,8 @@ const stopButton = document.getElementById("stop");
 stopButton.addEventListener("click", async () => {
  if (!bootstrapToken || stopButton.disabled) return;
  stopped = true;
+ shareButton.disabled = true;
+ shareStatus.textContent = "Skjermdeling stoppet.";
  stopButton.disabled = true;
  approve.disabled = true;
  deny.disabled = true;
@@ -154,4 +156,24 @@ stopButton.addEventListener("click", async () => {
  }
  // Never enable the controls again in this browser session.
  stopButton.disabled = true;
+});
+
+const shareButton = document.getElementById("share-screen");
+const shareStatus = document.getElementById("share-status");
+shareButton.addEventListener("click", async () => {
+ if (stopped || shareButton.disabled || !bootstrapToken) return;
+ shareButton.disabled = true;
+ shareStatus.textContent = "Ber Linux om skjermvalg. Dette starter ikke videooverføring.";
+ try {
+  const response = await fetch("/api/screen-share/start",{
+   method:"POST",credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!response.ok) throw new Error("portal request failed");
+  const result = await response.json();
+  if (result.type !== "screen_share_requested") throw new Error("unexpected response");
+  shareStatus.textContent = "Forespørselen er sendt til Linux. Ingen skjermbilder overføres.";
+ } catch {
+  shareStatus.textContent = "Kunne ikke be om skjermdeling. Ingen skjermbilder overføres.";
+ }
 });

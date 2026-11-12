@@ -22,6 +22,8 @@ type ConsentBridge struct {
  pending *PendingConsent
  decide func(string,bool)error
  stop func()error
+ screenShare func()error
+ stopped bool
 }
 func NewConsentBridge(origin,session string,decide func(string,bool)error)(*ConsentBridge,error){
  if !strings.HasPrefix(origin,"http://127.0.0.1:")||session==""||decide==nil{return nil,errors.New("invalid local consent bridge")}
@@ -62,6 +64,7 @@ func (b *ConsentBridge)Handler()http.Handler{
   if b.stop==nil{http.Error(w,"unavailable",503);return}
   // Fail closed locally even if the remote server is unreachable.
   b.pending=nil
+  b.stopped=true
   if err:=b.stop();err!=nil{http.Error(w,"stop failed",502);return}
   _=json.NewEncoder(w).Encode(map[string]string{"type":"session_stopped"})
  })
@@ -105,6 +108,7 @@ func (b *ConsentBridge)Handler()http.Handler{
   }
   _=json.NewEncoder(w).Encode(map[string]string{"type":"decision_recorded"})
  })
+ b.screenShareRoutes(mux,guard)
  return mux
 }
 // Token is a secret bootstrap credential for a trusted local HTML renderer.
