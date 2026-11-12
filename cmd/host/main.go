@@ -51,25 +51,30 @@ func main(){
  origin:="http://127.0.0.1:"+fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
  client:=hostclient.NewConsentClient(conn)
  if err:=client.EnrollHost(*hostCapability);err!=nil{log.Fatal("host enrollment failed: ",err)}
- bridge,err:=hostclient.NewConsentBridge(origin,*session,client.Decide)
+ type decision struct{ticket string;approve bool;reply chan error}
+ decisions:=make(chan decision)
+ bridge,err:=hostclient.NewConsentBridge(origin,*session,func(ticket string,approve bool)error{
+  reply:=make(chan error,1)
+  select{case decisions<-decision{ticket,approve,reply}:case <-ctx.Done():return ctx.Err()}
+  select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
+ })
  if err!=nil{log.Fatal(err)}
  server:=&http.Server{Handler:bridge.Handler(),ReadHeaderTimeout:5*time.Second}
  go func(){if err:=server.Serve(listener);err!=nil&&err!=http.ErrServerClosed{log.Printf("local bridge stopped: %v",err);stop()}}()
  defer func(){shutdown,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();_=server.Shutdown(shutdown)}()
  fmt.Println("Local consent API initialized at",origin,"(no browser UI served yet)")
  fmt.Println("Token is intentionally not printed. Remote control remains disabled.")
- // The same goroutine owns all websocket reads and writes; HTTP decision
- // callbacks serialize through this goroutine to avoid concurrent reads.
- type decision struct{ticket string;approve bool;reply chan error}
- decisions:=make(chan decision)
- // Override bridge callback using a serialized channel in the next revision;
- // until then, do not poll concurrently with HTTP decisions.
- _=decisions
+ // The event loop exclusively owns the WebSocket, including HTTP decisions.
  ticker:=time.NewTicker(2*time.Second)
  defer ticker.Stop()
  for{
   select{
   case <-ctx.Done():bridge.Clear();return
+  case d:=<-decisions:
+   err:=client.Decide(d.ticket,d.approve)
+   d.reply<-err
+   if err!=nil{bridge.Clear();log.Printf("host decision failed: %v",err);return}
+   bridge.Clear()
   case <-ticker.C:
    pending,ok,err:=client.Check()
    if err!=nil{bridge.Clear();log.Printf("host connection ended: %v",err);return}
