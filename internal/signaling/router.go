@@ -68,3 +68,23 @@ func (r *Router)Route(connectionID string,e Envelope)error{
  default:return ErrConnectionLimit
  }
 }
+
+// CloseSession removes all destinations and discards buffered signaling.
+// It does not close channels because consumers may still be reading them.
+// Transport writers MUST recheck consent immediately before delivery.
+func (r *Router)CloseSession(sessionID string){
+ r.mu.Lock()
+ defer r.mu.Unlock()
+ peers:=r.destinations[sessionID]
+ delete(r.destinations,sessionID)
+ for _,queue:=range peers{
+  for {
+   select {
+   case <-queue:
+   default:
+    goto nextQueue
+   }
+  }
+ nextQueue:
+ }
+}
