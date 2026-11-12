@@ -126,14 +126,29 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
     }
    }
   }()
+  enrolled:=false
   for {
-   kind,_,err:=conn.ReadMessage()
+   kind,payload,err:=conn.ReadMessage()
    if err!=nil{return}
-   // Reject all application messages. The socket is identity-only.
-   if kind==websocket.TextMessage||kind==websocket.BinaryMessage{
-    _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"signaling not enabled"),time.Now().Add(5*time.Second))
+   if kind!=websocket.TextMessage{
+    _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"unsupported message"),time.Now().Add(5*time.Second))
     return
    }
+   var request struct{
+    Type string `json:"type"`
+    Role signaling.Role `json:"role"`
+    Capability string `json:"capability"`
+   }
+   if enrolled||a.enrollment==nil||json.Unmarshal(payload,&request)!=nil||request.Type!="role_enroll"||len(request.Capability)>256||
+    (request.Role!=signaling.HostRole&&request.Role!=signaling.TechnicianRole)||
+    a.enrollment.Bind(sessionID,id,request.Role,request.Capability)!=nil{
+    // Never echo or log role capabilities or disclose which check failed.
+    _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"message not authorized"),time.Now().Add(5*time.Second))
+    return
+   }
+   enrolled=true
+   ack,_:=json.Marshal(map[string]string{"type":"role_enrolled","role":string(request.Role)})
+   if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
   }
  })
 }
