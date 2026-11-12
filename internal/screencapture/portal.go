@@ -31,6 +31,7 @@ type PortalCapture struct {
  mu sync.Mutex
  approved bool
  stopped bool
+ started bool
  session PortalSession
  cancel context.CancelFunc
 }
@@ -54,11 +55,13 @@ func(c *PortalCapture)Start(ctx context.Context,env Environment,portal Portal)er
  c.mu.Lock()
  if c.stopped{c.mu.Unlock();return ErrStopped}
  if !c.approved{c.mu.Unlock();return ErrNotAuthorized}
+ if c.started{c.mu.Unlock();return ErrPortalRejected}
  if err:=ctx.Err();err!=nil{c.mu.Unlock();return err}
  if env.SessionType!="wayland"||!env.PortalAvailable||!env.PipeWireAvailable{c.mu.Unlock();return ErrUnavailable}
  if portal==nil{c.mu.Unlock();return ErrNotImplemented}
  // Never hold the mutex while waiting for a user's desktop portal dialog.
  // Stop must be able to cancel an in-flight request immediately.
+ c.started=true
  runCtx,cancel:=context.WithCancel(ctx)
  c.cancel=cancel
  c.mu.Unlock()
