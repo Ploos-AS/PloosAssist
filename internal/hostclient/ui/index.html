@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>PloosAssist – godkjenn fjernhjelp</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="card" aria-labelledby="title">
+  <div class="brand">PloosAssist</div>
+  <h1 id="title">Forespørsel om fjernhjelp</h1>
+  <p class="lead">En tekniker ønsker å koble til maskinen din.</p>
+  <div class="notice" role="status" id="status">Ingen autentisert lokal klient er tilkoblet.</div>
+  <dl>
+    <dt>Teknikerens verifiserte nøkkelavtrykk</dt>
+    <dd id="fingerprint">Ikke tilgjengelig</dd>
+    <dt>Supportøkt</dt>
+    <dd id="session">Ikke tilgjengelig</dd>
+  </dl>
+  <p>Godkjenn bare dersom du selv har bedt om hjelp og kjenner igjen teknikeren. Du skal kunne stoppe delingen når som helst.</p>
+  <div class="actions">
+    <button id="deny" type="button" disabled>Avslå</button>
+    <button id="approve" type="button" disabled>Godkjenn</button>
+  </div>
+  <p class="footnote">Knappene er deaktivert inntil en lokal klient leverer en gyldig forespørsel. Ingen fjernstyring er aktivert.</p>
+</main>
+<script src="script.js"></script>
+</body>
+</html>
