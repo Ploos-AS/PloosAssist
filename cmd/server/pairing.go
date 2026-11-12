@@ -11,7 +11,7 @@ import (
  "github.com/Ploos-AS/PloosAssist/internal/session"
 )
 
-type pairingAPI struct {store *session.Store}
+type pairingAPI struct {store *session.Store;revoke func(string,string)error}
 
 func newPairingAPI() *pairingAPI {
  s,err:=session.NewStore(5*time.Minute)
@@ -60,7 +60,9 @@ func (a *pairingAPI) routes(mux *http.ServeMux){
   jsonReply(w,200,map[string]string{"state":"denied"})
  }))
  mux.HandleFunc("POST /v1/pairings/{id}/revoke",onlyLocal(func(w http.ResponseWriter,r *http.Request){
-  if err:=a.store.Revoke(readID(r),credential(r));err!=nil{pairError(w,err);return}
+  revoke:=a.store.Revoke
+  if a.revoke!=nil{revoke=a.revoke}
+  if err:=revoke(readID(r),credential(r));err!=nil{pairError(w,err);return}
   jsonReply(w,200,map[string]string{"state":"revoked"})
  }))
  mux.HandleFunc("GET /v1/pairings/{id}/authorization",onlyLocal(func(w http.ResponseWriter,r *http.Request){

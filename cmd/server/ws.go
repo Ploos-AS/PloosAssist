@@ -34,6 +34,21 @@ type wsAPI struct {
  delivery *signaling.HostDelivery
  router *signaling.Router
  enrollment *signaling.Enrollment
+ consent *signaling.ConsentPolicy
+ events *signaling.ApprovalEvents
+ revocation *signaling.Revocation
+ activeMu sync.Mutex
+ active map[string]activeSocket
+}
+type activeSocket struct{session string;conn *websocket.Conn}
+func (a *wsAPI)track(id,session string,conn *websocket.Conn){a.activeMu.Lock();defer a.activeMu.Unlock();a.active[id]=activeSocket{session,conn}}
+func (a *wsAPI)untrack(id string){a.activeMu.Lock();defer a.activeMu.Unlock();delete(a.active,id)}
+func (a *wsAPI)terminateSession(session string){
+ a.activeMu.Lock()
+ var sockets []*websocket.Conn
+ for id,s:=range a.active{if s.session==session{sockets=append(sockets,s.conn);delete(a.active,id)}}
+ a.activeMu.Unlock()
+ for _,conn:=range sockets{_ =conn.Close()}
 }
 func newWSAPI()*wsAPI {
  a,err:=identity.NewTransportAuth(30*time.Second,wsMaxConcurrent)
@@ -47,7 +62,7 @@ func newWSAPI()*wsAPI {
  events,_:=signaling.NewApprovalEvents(wsMaxConcurrent,approvals)
  delivery,_:=signaling.NewHostDelivery(wsMaxConcurrent,connections,approvals,events)
  router,_:=signaling.NewRouter(connections,consent)
- return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),roles:roles,approvals:approvals,delivery:delivery,router:router}
+ return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),active:make(map[string]activeSocket),roles:roles,approvals:approvals,delivery:delivery,router:router,consent:consent,events:events,revocation:nil}
 }
 
 func mustEnrollment(store *session.Store,connections *signaling.Connections,roles *signaling.Roles)*signaling.Enrollment{
@@ -85,6 +100,7 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
   // Cleanup must run while the verified connection identity still exists.
   // Never trust a disconnect message supplied by the peer.
   defer a.cleanupConnection(id)
+  defer a.untrack(id)
   challengeID,ch,err:=a.auth.Challenge(id)
   if err!=nil{return}
   start,_:=json.Marshal(map[string]string{"type":"challenge","nonce":base64.RawURLEncoding.EncodeToString(ch.Nonce),"challenge_id":challengeID})
@@ -100,6 +116,7 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
   verifiedSession,verifiedFingerprint,err:=a.auth.Identity(id)
   if err!=nil||verifiedSession!=sessionID||verifiedFingerprint!=fingerprint{return}
   if err:=a.connections.Register(id,verifiedSession,verifiedFingerprint);err!=nil{return}
+  a.track(id,verifiedSession,conn)
   response,_:=json.Marshal(map[string]string{"type":"proof_verified","fingerprint":fingerprint})
   if err:=conn.WriteMessage(websocket.TextMessage,response);err!=nil{return}
   // Keep the authenticated socket alive, but never accept application
@@ -149,7 +166,7 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
     if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
     continue
    }
-   var action struct{Type string `json:"type"`;TicketID string `json:"ticket_id"`;Approve *bool `json:"approve"`}
+   var action struct{Type string `json:"type"`;TicketID string `json:"ticket_id"`;Approve *bool `json:"approve"`;Capability string `json:"capability"`}
    if json.Unmarshal(payload,&action)!=nil{a.wsPolicyClose(conn);return}
    switch {
    case action.Type=="approval_request"&&enrolledRole==signaling.TechnicianRole:
@@ -194,6 +211,15 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
     if *action.Approve{state="approved"}
     ack,_:=json.Marshal(map[string]string{"type":"approval_decided","state":state})
     if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+   case action.Type=="session_revoke"&&enrolledRole==signaling.HostRole:
+    if a.revocation==nil||len(action.Capability)>256||action.Capability==""{
+     a.wsPolicyClose(conn);return
+    }
+    // Revocation requires the independent host capability, not merely a
+    // claimed role. Terminate both sockets after all in-memory grants close.
+    if err:=a.revocation.Revoke(sessionID,action.Capability);err!=nil{a.wsPolicyClose(conn);return}
+    a.terminateSession(sessionID)
+    return
    default:
     a.wsPolicyClose(conn);return
    }

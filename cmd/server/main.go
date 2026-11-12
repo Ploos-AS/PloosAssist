@@ -8,6 +8,8 @@ import (
  "log"
  "net/http"
  "time"
+
+ "github.com/Ploos-AS/PloosAssist/internal/signaling"
 )
 
 func handler() http.Handler {
@@ -19,6 +21,14 @@ func handler() http.Handler {
  pairing:=newPairingAPI()
  ws:=newWSAPI()
  ws.enrollment=mustEnrollment(pairing.store,ws.connections,ws.roles)
+ var err error
+ ws.revocation,err=signaling.NewRevocation(pairing.store,ws.consent,ws.roles,ws.approvals,ws.events,ws.delivery,ws.router)
+ if err!=nil{panic(err)}
+ pairing.revoke=func(sessionID,capability string)error{
+  if err:=ws.revocation.Revoke(sessionID,capability);err!=nil{return err}
+  ws.terminateSession(sessionID)
+  return nil
+ }
  pairing.routes(mux)
  newAuthAPI().routes(mux)
  ws.routes(mux)
