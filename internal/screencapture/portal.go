@@ -31,7 +31,9 @@ type PortalCapture struct {
  mu sync.Mutex
  approved bool
  stopped bool
+ started bool
  session PortalSession
+ cancel context.CancelFunc
 }
 func NewPortalCapture()*PortalCapture{return &PortalCapture{}}
 func(c *PortalCapture)Approve(){
@@ -43,27 +45,45 @@ func(c *PortalCapture)Stop(){
  c.stopped=true
  c.approved=false
  session:=c.session
+ cancel:=c.cancel
  c.session=nil
  c.mu.Unlock()
+ if cancel!=nil{cancel()}
  if session!=nil{_ =session.Close()}
 }
 func(c *PortalCapture)Start(ctx context.Context,env Environment,portal Portal)error{
  c.mu.Lock()
- defer c.mu.Unlock()
- if c.stopped{return ErrStopped}
- if !c.approved{return ErrNotAuthorized}
- if err:=ctx.Err();err!=nil{return err}
- if env.SessionType!="wayland"||!env.PortalAvailable||!env.PipeWireAvailable{return ErrUnavailable}
- if portal==nil{return ErrNotImplemented}
- session,err:=portal.CreateSession(ctx)
+ if c.stopped{c.mu.Unlock();return ErrStopped}
+ if !c.approved{c.mu.Unlock();return ErrNotAuthorized}
+ if c.started{c.mu.Unlock();return ErrPortalRejected}
+ if err:=ctx.Err();err!=nil{c.mu.Unlock();return err}
+ if env.SessionType!="wayland"||!env.PortalAvailable||!env.PipeWireAvailable{c.mu.Unlock();return ErrUnavailable}
+ if portal==nil{c.mu.Unlock();return ErrNotImplemented}
+ // Never hold the mutex while waiting for a user's desktop portal dialog.
+ // Stop must be able to cancel an in-flight request immediately.
+ c.started=true
+ runCtx,cancel:=context.WithCancel(ctx)
+ c.cancel=cancel
+ c.mu.Unlock()
+ defer func(){
+  cancel()
+  c.mu.Lock()
+  c.cancel=nil
+  c.mu.Unlock()
+ }()
+ session,err:=portal.CreateSession(runCtx)
  if err!=nil{return err}
  if session==nil{return ErrPortalRejected}
- // Retain the lock during the entire consent handshake so Stop cannot
- // race with the transition into an authorized capture session.
+ c.mu.Lock()
+ if c.stopped{c.mu.Unlock();_ =session.Close();return ErrStopped}
  c.session=session
- if err:=session.SelectSources(ctx);err!=nil{_ =session.Close();c.session=nil;return err}
- if err:=session.Start(ctx);err!=nil{_ =session.Close();c.session=nil;return err}
- if err:=ctx.Err();err!=nil{_ =session.Close();c.session=nil;return err}
- // No PipeWire remote is opened and no frames leave the machine.
+ c.mu.Unlock()
+ if err:=session.SelectSources(runCtx);err!=nil{_ =session.Close();return err}
+ if err:=session.Start(runCtx);err!=nil{_ =session.Close();return err}
+ if err:=runCtx.Err();err!=nil{_ =session.Close();return err}
+ c.mu.Lock()
+ stopped:=c.stopped
+ c.mu.Unlock()
+ if stopped{_ =session.Close();return ErrStopped}
  return nil
 }
