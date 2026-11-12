@@ -88,6 +88,7 @@ type dbusPortalSession struct{
  mu sync.Mutex
  closed bool
  started bool
+ streams []Stream
 }
 func(p *DBusPortal)CreateSession(ctx context.Context)(PortalSession,error){
  requestToken,err:=token();if err!=nil{return nil,err}
@@ -128,9 +129,12 @@ func(s *dbusPortalSession)Start(ctx context.Context)error{
  if err!=nil{return err}
  streams,ok:=result["streams"]
  if !ok||streams.Value()==nil{return fmt.Errorf("%w: no selected streams",ErrPortalResponse)}
+ selected,err:=parseStreams(streams.Value())
+ if err!=nil{return err}
  s.mu.Lock()
  defer s.mu.Unlock()
  if s.closed{return ErrStopped}
+ s.streams=selected
  s.started=true
  return nil
 }
@@ -168,4 +172,14 @@ func(s *dbusPortalSession)OpenPipeWireRemote(ctx context.Context)(*os.File,error
  if closed{_ =file.Close();return nil,ErrStopped}
  if err:=ctx.Err();err!=nil{_ =file.Close();return nil,err}
  return file,nil
+}
+
+// Streams returns a defensive copy of the portal-selected PipeWire node IDs.
+// Only nodes from the successful ScreenCast Start response are trusted.
+func(s *dbusPortalSession)Streams()([]Stream,error){
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ if s.closed{return nil,ErrStopped}
+ if !s.started||len(s.streams)==0{return nil,ErrNotAuthorized}
+ return append([]Stream(nil),s.streams...),nil
 }
