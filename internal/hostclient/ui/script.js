@@ -129,3 +129,27 @@ if (bootstrapToken && /^[A-Za-z0-9_-]{40,64}$/.test(bootstrapToken)) {
   setInterval(() => void poll(), 2000);
  }
 }
+
+const stopButton = document.getElementById("stop");
+stopButton.addEventListener("click", async () => {
+ if (!bootstrapToken || stopButton.disabled) return;
+ stopButton.disabled = true;
+ approve.disabled = true;
+ deny.disabled = true;
+ active = null;
+ status.textContent = "Avslutter supportøkten …";
+ try {
+  const response = await fetch("/api/consent/stop", {
+   method:"POST",credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!response.ok) throw new Error("stop failed");
+  const result = await response.json();
+  if (result.type !== "session_stopped") throw new Error("invalid stop response");
+  reset("Supportøkten er avsluttet lokalt. Ingen fjernstyring er aktiv.");
+ } catch {
+  reset("Lokal tilgang er stoppet, men serverens tilbakekalling er ikke bekreftet. Lukk klienten.");
+ }
+ // Never enable the controls again in this browser session.
+ stopButton.disabled = true;
+});
