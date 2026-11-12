@@ -149,9 +149,10 @@ func(s *dbusPortalSession)Close()error{
 // and MUST be closed by the caller. This method does not consume frames.
 func(s *dbusPortalSession)OpenPipeWireRemote(ctx context.Context)(*os.File,error){
  s.mu.Lock()
- defer s.mu.Unlock()
- if s.closed{return nil,ErrStopped}
- if !s.started{return nil,ErrNotAuthorized}
+ closed,started:=s.closed,s.started
+ s.mu.Unlock()
+ if closed{return nil,ErrStopped}
+ if !started{return nil,ErrNotAuthorized}
  if err:=ctx.Err();err!=nil{return nil,err}
  var fd dbus.UnixFD
  err:=s.portal.conn.Object(portalBus,portalPath).
@@ -161,5 +162,10 @@ func(s *dbusPortalSession)OpenPipeWireRemote(ctx context.Context)(*os.File,error
  if int(fd)<0{return nil,ErrPortalResponse}
  file:=os.NewFile(uintptr(fd),"ploosassist-portal-pipewire")
  if file==nil{return nil,ErrPortalResponse}
+ s.mu.Lock()
+ closed=s.closed
+ s.mu.Unlock()
+ if closed{_ =file.Close();return nil,ErrStopped}
+ if err:=ctx.Err();err!=nil{_ =file.Close();return nil,err}
  return file,nil
 }
