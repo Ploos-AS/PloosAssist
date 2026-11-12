@@ -23,6 +23,7 @@ type ConsentBridge struct {
  decide func(string,bool)error
  stop func()error
  screenShare func()error
+ screenShareStatus func()string
  stopped bool
 }
 func NewConsentBridge(origin,session string,decide func(string,bool)error)(*ConsentBridge,error){
