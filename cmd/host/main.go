@@ -53,12 +53,18 @@ func main(){
  if err:=client.EnrollHost(*hostCapability);err!=nil{log.Fatal("host enrollment failed: ",err)}
  type decision struct{ticket string;approve bool;reply chan error}
  decisions:=make(chan decision)
+ stopRequests:=make(chan chan error)
  bridge,err:=hostclient.NewConsentBridge(origin,*session,func(ticket string,approve bool)error{
   reply:=make(chan error,1)
   select{case decisions<-decision{ticket,approve,reply}:case <-ctx.Done():return ctx.Err()}
   select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
  })
  if err!=nil{log.Fatal(err)}
+ bridge.SetStop(func()error{
+  reply:=make(chan error,1)
+  select{case stopRequests<-reply:case <-ctx.Done():return ctx.Err()}
+  select{case err:=<-reply:return err;case <-ctx.Done():return ctx.Err()}
+ })
  server:=&http.Server{Handler:bridge.UIHandler(),ReadHeaderTimeout:5*time.Second}
  go func(){if err:=server.Serve(listener);err!=nil&&err!=http.ErrServerClosed{log.Printf("local bridge stopped: %v",err);stop()}}()
  defer func(){shutdown,cancel:=context.WithTimeout(context.Background(),3*time.Second);defer cancel();_=server.Shutdown(shutdown)}()
@@ -70,6 +76,14 @@ func main(){
  for{
   select{
   case <-ctx.Done():bridge.Clear();return
+  case reply:=<-stopRequests:
+   bridge.Clear()
+   err:=client.Revoke(*hostCapability)
+   reply<-err
+   // Disconnect locally regardless of network outcome. A failed write
+   // cannot prove remote revocation, so never report remote success.
+   _=conn.Close()
+   return
   case d:=<-decisions:
    err:=client.Decide(d.ticket,d.approve)
    d.reply<-err
