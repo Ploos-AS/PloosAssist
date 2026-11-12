@@ -34,6 +34,8 @@ type wsAPI struct {
  delivery *signaling.HostDelivery
  router *signaling.Router
  enrollment *signaling.Enrollment
+ consent *signaling.ConsentPolicy
+ events *signaling.ApprovalEvents
  revocation *signaling.Revocation
  activeMu sync.Mutex
  active map[string]activeSocket
@@ -60,7 +62,7 @@ func newWSAPI()*wsAPI {
  events,_:=signaling.NewApprovalEvents(wsMaxConcurrent,approvals)
  delivery,_:=signaling.NewHostDelivery(wsMaxConcurrent,connections,approvals,events)
  router,_:=signaling.NewRouter(connections,consent)
- return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),active:make(map[string]activeSocket),roles:roles,approvals:approvals,delivery:delivery,router:router,revocation:nil}
+ return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),active:make(map[string]activeSocket),roles:roles,approvals:approvals,delivery:delivery,router:router,consent:consent,events:events,revocation:nil}
 }
 
 func mustEnrollment(store *session.Store,connections *signaling.Connections,roles *signaling.Roles)*signaling.Enrollment{
