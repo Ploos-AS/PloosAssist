@@ -148,7 +148,7 @@ stopButton.addEventListener("click", async () => {
   if (!response.ok) throw new Error("stop failed");
   const result = await response.json();
   if (result.type !== "session_stopped") throw new Error("invalid stop response");
-  reset("Supportøkten er avsluttet lokalt. Ingen fjernstyring er aktiv.");
+  reset("Serveren har bekreftet tilbakekalling. Supportøkten er avsluttet.");
  } catch {
   reset("Lokal tilgang er stoppet, men serverens tilbakekalling er ikke bekreftet. Lukk klienten.");
  }
