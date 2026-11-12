@@ -177,3 +177,32 @@ shareButton.addEventListener("click", async () => {
   shareStatus.textContent = "Kunne ikke be om skjermdeling. Ingen skjermbilder overføres.";
  }
 });
+
+const portalStatusText = Object.freeze({
+ idle:"Skjermdeling er ikke startet.",
+ waiting:"Venter på skjermvalg i Linux.",
+ approved:"Linux har godkjent portaløkten. Ingen skjermbilder overføres.",
+ denied:"Skjermdeling ble avslått eller avvist av Linux.",
+ error:"Feil ved oppstart av skjermdeling. Ingen skjermbilder overføres.",
+ stopped:"Skjermdeling stoppet.",
+ unavailable:"Skjermdeling er ikke tilgjengelig."
+});
+async function pollScreenShareStatus(){
+ if (stopped || !bootstrapToken || document.hidden) return;
+ try {
+  const response = await fetch("/api/screen-share/status",{
+   credentials:"omit",cache:"no-store",
+   headers:{"X-PloosAssist-Token":bootstrapToken}
+  });
+  if (!response.ok) throw new Error("status unavailable");
+  const result = await response.json();
+  if (result.type!=="screen_share_status" ||
+      !Object.prototype.hasOwnProperty.call(portalStatusText,result.state))
+   throw new Error("invalid status");
+  if (!stopped) shareStatus.textContent=portalStatusText[result.state];
+ } catch {
+  if (!stopped) shareStatus.textContent="Kunne ikke hente status for skjermdeling.";
+ }
+}
+void pollScreenShareStatus();
+setInterval(() => void pollScreenShareStatus(),2000);
