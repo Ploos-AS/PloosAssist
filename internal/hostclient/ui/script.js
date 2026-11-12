@@ -182,6 +182,8 @@ const portalStatusText = Object.freeze({
  idle:"Skjermdeling er ikke startet.",
  waiting:"Venter på skjermvalg i Linux.",
  approved:"Linux har godkjent portaløkten. Ingen skjermbilder overføres.",
+ capturing:"Skjermbilder mottas kun lokalt. Ingen bilder overføres til teknikeren.",
+ finished:"Lokal skjermfangst er avsluttet.",
  denied:"Skjermdeling ble avslått eller avvist av Linux.",
  error:"Feil ved oppstart av skjermdeling. Ingen skjermbilder overføres.",
  stopped:"Skjermdeling stoppet.",
