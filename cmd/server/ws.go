@@ -28,13 +28,24 @@ type wsAPI struct {
  auth *identity.TransportAuth
  connections *signaling.Connections
  slots chan struct{}
+ roles *signaling.Roles
+ approvals *signaling.ApprovalRequests
+ delivery *signaling.HostDelivery
+ router *signaling.Router
 }
 func newWSAPI()*wsAPI {
  a,err:=identity.NewTransportAuth(30*time.Second,wsMaxConcurrent)
  if err!=nil{panic(err)}
  connections,err:=signaling.NewConnections(wsMaxConcurrent,2*time.Minute)
  if err!=nil{panic(err)}
- return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent)}
+ consent,_:=signaling.NewConsentPolicy(wsMaxConcurrent)
+ roles,_:=signaling.NewRoles(wsMaxConcurrent,connections)
+ coordinator,_:=signaling.NewCoordinator(connections,consent)
+ approvals,_:=signaling.NewApprovalRequests(wsMaxConcurrent,connections,coordinator)
+ events,_:=signaling.NewApprovalEvents(wsMaxConcurrent,approvals)
+ delivery,_:=signaling.NewHostDelivery(wsMaxConcurrent,connections,approvals,events)
+ router,_:=signaling.NewRouter(connections,consent)
+ return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),roles:roles,approvals:approvals,delivery:delivery,router:router}
 }
 
 func (a *wsAPI)routes(mux *http.ServeMux) {
@@ -63,6 +74,9 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
   if err!=nil{return}
   defer a.auth.Close(id)
   defer a.connections.Close(id)
+  // Cleanup must run while the verified connection identity still exists.
+  // Never trust a disconnect message supplied by the peer.
+  defer a.cleanupConnection(id)
   challengeID,ch,err:=a.auth.Challenge(id)
   if err!=nil{return}
   start,_:=json.Marshal(map[string]string{"type":"challenge","nonce":base64.RawURLEncoding.EncodeToString(ch.Nonce),"challenge_id":challengeID})
@@ -114,4 +128,12 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
    }
   }
  })
+}
+
+// cleanupConnection runs on every authenticated or partially authenticated
+// socket exit, before its identity is removed from the connection registry.
+func (a *wsAPI)cleanupConnection(connectionID string){
+ a.router.Detach(connectionID)
+ a.delivery.Disconnect(connectionID)
+ a.roles.Disconnect(connectionID)
 }
