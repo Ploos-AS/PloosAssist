@@ -2,7 +2,6 @@ package main
 
 import (
  "testing"
- "time"
 
  "github.com/Ploos-AS/PloosAssist/internal/identity"
  "github.com/Ploos-AS/PloosAssist/internal/signaling"
@@ -31,5 +30,4 @@ func TestSharedPairingStoreSupportsVerifiedRoleEnrollment(t *testing.T){
  if err!=nil||h!="host-conn"||tech!="tech-conn"{t.Fatalf("role pair: %q %q %v",h,tech,err)}
  ws.cleanupConnection("host-conn")
  if _,_,err:=ws.roles.Pair(id);err==nil{t.Fatal("role pair survived host disconnect")}
- _=time.Second // Keep test independent of real server timing.
 }
