@@ -8,6 +8,7 @@ import (
  "encoding/hex"
  "errors"
  "fmt"
+ "os"
  "sync"
  "time"
 
@@ -86,6 +87,7 @@ type dbusPortalSession struct{
  path dbus.ObjectPath
  mu sync.Mutex
  closed bool
+ started bool
 }
 func(p *DBusPortal)CreateSession(ctx context.Context)(PortalSession,error){
  requestToken,err:=token();if err!=nil{return nil,err}
@@ -126,6 +128,10 @@ func(s *dbusPortalSession)Start(ctx context.Context)error{
  if err!=nil{return err}
  streams,ok:=result["streams"]
  if !ok||streams.Value()==nil{return fmt.Errorf("%w: no selected streams",ErrPortalResponse)}
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ if s.closed{return ErrStopped}
+ s.started=true
  return nil
 }
 func(s *dbusPortalSession)Close()error{
@@ -136,4 +142,30 @@ func(s *dbusPortalSession)Close()error{
  ctx,cancel:=context.WithTimeout(context.Background(),2*time.Second)
  defer cancel()
  return s.portal.conn.Object(portalBus,s.path).CallWithContext(ctx,portalSession+".Close",0).Err
+}
+
+// OpenPipeWireRemote requests the portal-scoped PipeWire socket only after
+// the interactive ScreenCast Start grant. The returned descriptor is local
+// and MUST be closed by the caller. This method does not consume frames.
+func(s *dbusPortalSession)OpenPipeWireRemote(ctx context.Context)(*os.File,error){
+ s.mu.Lock()
+ closed,started:=s.closed,s.started
+ s.mu.Unlock()
+ if closed{return nil,ErrStopped}
+ if !started{return nil,ErrNotAuthorized}
+ if err:=ctx.Err();err!=nil{return nil,err}
+ var fd dbus.UnixFD
+ err:=s.portal.conn.Object(portalBus,portalPath).
+  CallWithContext(ctx,portalScreenCast+".OpenPipeWireRemote",0,
+   s.path,map[string]dbus.Variant{}).Store(&fd)
+ if err!=nil{return nil,err}
+ if int(fd)<0{return nil,ErrPortalResponse}
+ file:=os.NewFile(uintptr(fd),"ploosassist-portal-pipewire")
+ if file==nil{return nil,ErrPortalResponse}
+ s.mu.Lock()
+ closed=s.closed
+ s.mu.Unlock()
+ if closed{_ =file.Close();return nil,ErrStopped}
+ if err:=ctx.Err();err!=nil{_ =file.Close();return nil,err}
+ return file,nil
 }
