@@ -127,28 +127,62 @@ func (a *wsAPI)routes(mux *http.ServeMux) {
    }
   }()
   enrolled:=false
+  var enrolledRole signaling.Role
   for {
    kind,payload,err:=conn.ReadMessage()
    if err!=nil{return}
-   if kind!=websocket.TextMessage{
-    _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"unsupported message"),time.Now().Add(5*time.Second))
-    return
+   if kind!=websocket.TextMessage{a.wsPolicyClose(conn);return}
+   if !enrolled{
+    var request struct{
+     Type string `json:"type"`
+     Role signaling.Role `json:"role"`
+     Capability string `json:"capability"`
+    }
+    if a.enrollment==nil||json.Unmarshal(payload,&request)!=nil||request.Type!="role_enroll"||len(request.Capability)>256||
+     (request.Role!=signaling.HostRole&&request.Role!=signaling.TechnicianRole)||
+     a.enrollment.Bind(sessionID,id,request.Role,request.Capability)!=nil{
+     a.wsPolicyClose(conn);return
+    }
+    enrolled=true
+    enrolledRole=request.Role
+    ack,_:=json.Marshal(map[string]string{"type":"role_enrolled","role":string(request.Role)})
+    if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+    continue
    }
-   var request struct{
-    Type string `json:"type"`
-    Role signaling.Role `json:"role"`
-    Capability string `json:"capability"`
+   var action struct{Type string `json:"type"`}
+   if json.Unmarshal(payload,&action)!=nil{a.wsPolicyClose(conn);return}
+   switch {
+   case action.Type=="approval_request"&&enrolledRole==signaling.TechnicianRole:
+    hostID,techID,err:=a.roles.Pair(sessionID)
+    if err!=nil||techID!=id{a.wsPolicyClose(conn);return}
+    req,err:=a.approvals.Request(sessionID,hostID,id,2*time.Minute)
+    if err!=nil{a.wsPolicyClose(conn);return}
+    ticket,err:=a.delivery.Queue(req,hostID)
+    if err!=nil{
+     a.approvals.Cancel(sessionID)
+     a.wsPolicyClose(conn);return
+    }
+    ack,_:=json.Marshal(map[string]string{"type":"approval_requested","expires_at":ticket.ExpiresAt.UTC().Format(time.RFC3339)})
+    if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+   case action.Type=="approval_check"&&enrolledRole==signaling.HostRole:
+    hostID,_,err:=a.roles.Pair(sessionID)
+    if err!=nil||hostID!=id{a.wsPolicyClose(conn);return}
+    ticket,err:=a.delivery.Take(id)
+    if err!=nil{
+     ack,_:=json.Marshal(map[string]string{"type":"approval_none"})
+     if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+     continue
+    }
+    ack,_:=json.Marshal(map[string]string{
+     "type":"approval_pending",
+     "ticket_id":ticket.ID,
+     "technician_fingerprint":ticket.TechnicianFingerprint,
+     "expires_at":ticket.ExpiresAt.UTC().Format(time.RFC3339),
+    })
+    if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
+   default:
+    a.wsPolicyClose(conn);return
    }
-   if enrolled||a.enrollment==nil||json.Unmarshal(payload,&request)!=nil||request.Type!="role_enroll"||len(request.Capability)>256||
-    (request.Role!=signaling.HostRole&&request.Role!=signaling.TechnicianRole)||
-    a.enrollment.Bind(sessionID,id,request.Role,request.Capability)!=nil{
-    // Never echo or log role capabilities or disclose which check failed.
-    _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"message not authorized"),time.Now().Add(5*time.Second))
-    return
-   }
-   enrolled=true
-   ack,_:=json.Marshal(map[string]string{"type":"role_enrolled","role":string(request.Role)})
-   if err:=conn.WriteMessage(websocket.TextMessage,ack);err!=nil{return}
   }
  })
 }
@@ -159,4 +193,8 @@ func (a *wsAPI)cleanupConnection(connectionID string){
  a.router.Detach(connectionID)
  a.delivery.Disconnect(connectionID)
  a.roles.Disconnect(connectionID)
+}
+
+func (a *wsAPI)wsPolicyClose(conn *websocket.Conn){
+ _=conn.WriteControl(websocket.CloseMessage,websocket.FormatCloseMessage(websocket.ClosePolicyViolation,"message not authorized"),time.Now().Add(5*time.Second))
 }
