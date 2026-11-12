@@ -63,6 +63,7 @@ func main(){
  share:=newScreenShareAction()
  defer share.Stop()
  bridge.SetScreenShare(func()error{return share.Start(ctx)})
+ bridge.SetScreenShareStatus(share.Status)
  bridge.SetStop(func()error{
   share.Stop()
   reply:=make(chan error,1)
