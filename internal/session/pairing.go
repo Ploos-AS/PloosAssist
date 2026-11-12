@@ -99,3 +99,27 @@ func (s *Store) Authorized(id,technicianSecret string)bool{
  p,err:=s.lookup(id)
  return err==nil && p.State==Approved && p.technicianSecret!="" && subtle.ConstantTimeCompare([]byte(p.technicianSecret),[]byte(technicianSecret))==1
 }
+
+// VerifyRoleCapability checks a pairing role credential without changing the
+// pairing state. It returns the original pairing expiry so downstream role
+// bindings cannot outlive the pairing. Callers must bind the credential to a
+// verified connection, never trust a client-supplied connection ID.
+func (s *Store) VerifyRoleCapability(id,role,capability string)(time.Time,error){
+ s.mu.Lock()
+ defer s.mu.Unlock()
+ p,err:=s.lookup(id)
+ if err!=nil{return time.Time{},err}
+ if capability==""{return time.Time{},ErrUnauthorized}
+ var expected string
+ switch role {
+ case "host":
+  if p.State!=Pending&&p.State!=AwaitingApproval&&p.State!=Approved{return time.Time{},ErrInvalidState}
+  expected=p.hostSecret
+ case "technician":
+  if p.State!=AwaitingApproval&&p.State!=Approved{return time.Time{},ErrInvalidState}
+  expected=p.technicianSecret
+ default:return time.Time{},ErrUnauthorized
+ }
+ if expected==""||subtle.ConstantTimeCompare([]byte(expected),[]byte(capability))!=1{return time.Time{},ErrUnauthorized}
+ return p.ExpiresAt,nil
+}

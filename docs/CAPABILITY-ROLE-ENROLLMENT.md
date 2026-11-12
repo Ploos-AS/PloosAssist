@@ -1,0 +1,5 @@
+# Capability-backed role enrollment
+
+A new internal `Enrollment` component checks the pairing store's **independent host or technician capability** and verifies that the target connection is already authenticated for the same session. Only then does it register the role. The role binding uses the original pairing expiration, not a caller-selected expiration. Wrong credentials, cross-session connections and revoked pairings are rejected.
+
+**Security limitations:** This is still an in-process component, not a WebSocket message handler. The real transport handler must derive the connection ID from the authenticated socket and never accept one from JSON. The existing pairing HTTP endpoints remain loopback-only and are not yet integrated with the WebSocket handler. Pairing revocation after enrollment must invalidate role bindings and all pending/active consent immediately; the registry currently only enforces its own expiry and connection liveness. Do not enable signaling or remote control until this revocation path and an actual host approval UI are integrated.
