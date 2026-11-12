@@ -11,6 +11,7 @@ import (
  "github.com/gorilla/websocket"
  "github.com/Ploos-AS/PloosAssist/internal/identity"
  "github.com/Ploos-AS/PloosAssist/internal/signaling"
+ "github.com/Ploos-AS/PloosAssist/internal/session"
 )
 
 const (
@@ -32,6 +33,7 @@ type wsAPI struct {
  approvals *signaling.ApprovalRequests
  delivery *signaling.HostDelivery
  router *signaling.Router
+ enrollment *signaling.Enrollment
 }
 func newWSAPI()*wsAPI {
  a,err:=identity.NewTransportAuth(30*time.Second,wsMaxConcurrent)
@@ -46,6 +48,12 @@ func newWSAPI()*wsAPI {
  delivery,_:=signaling.NewHostDelivery(wsMaxConcurrent,connections,approvals,events)
  router,_:=signaling.NewRouter(connections,consent)
  return &wsAPI{auth:a,connections:connections,slots:make(chan struct{},wsMaxConcurrent),roles:roles,approvals:approvals,delivery:delivery,router:router}
+}
+
+func mustEnrollment(store *session.Store,connections *signaling.Connections,roles *signaling.Roles)*signaling.Enrollment{
+ e,err:=signaling.NewEnrollment(store,connections,roles)
+ if err!=nil{panic(err)}
+ return e
 }
 
 func (a *wsAPI)routes(mux *http.ServeMux) {
