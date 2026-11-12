@@ -21,8 +21,10 @@ func TestRouterRequiresVerifiedIdentityAndLiveConsent(t *testing.T){
  if err:=router.Route("host-conn",message);err!=nil{t.Fatal(err)}
  select{case got:=<-inbox:if got.Payload!="offer"{t.Fatalf("payload: %s",got.Payload)};default:t.Fatal("missing delivery")}
  message.SenderID="tech-fp"
+ message.RecipientID="host-fp"
  if err:=router.Route("host-conn",message);!errors.Is(err,ErrUnauthorized){t.Fatalf("spoofing: %v",err)}
  message.SenderID="host-fp"
+ message.RecipientID="tech-fp"
  if err:=consent.Revoke("session","host-fp");err!=nil{t.Fatal(err)}
  if err:=router.Route("host-conn",message);!errors.Is(err,ErrConsentDenied){t.Fatalf("revocation: %v",err)}
  router.Detach("tech-conn")
