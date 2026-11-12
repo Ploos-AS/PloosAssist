@@ -21,7 +21,14 @@ func(a *screenShareAction)PreviewPNG()([]byte,error){
  if stopped||state!="capturing"{return nil,errors.New("preview not active")}
  frame,ok:=a.local.Snapshot()
  if !ok{return nil,errors.New("no frame available")}
- return encodePreviewPNG(frame)
+ png,err:=encodePreviewPNG(frame)
+ clear(frame.Pixels)
+ if err!=nil{return nil,err}
+ a.mu.Lock()
+ stopped=a.stopped || a.state!="capturing"
+ a.mu.Unlock()
+ if stopped{return nil,errors.New("preview stopped")}
+ return png,nil
 }
 func encodePreviewPNG(f framebuffer.Frame)([]byte,error){
  if f.Width<=0||f.Height<=0||f.Stride<f.Width*4||
