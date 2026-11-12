@@ -24,3 +24,21 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: go build ./...
+
+  pipewire-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install PipeWire development headers
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev pkg-config gcc
+      - name: Build native PipeWire adapter
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go mod tidy
+          go test -tags pipewire ./internal/screencapture/...
+          go build -tags pipewire ./...
