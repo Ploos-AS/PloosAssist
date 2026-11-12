@@ -12,7 +12,17 @@ func(b *ConsentBridge)SetScreenShare(start func()error){
  defer b.mu.Unlock()
  b.screenShare=start
 }
+func(b *ConsentBridge)SetScreenShareStatus(status func()string){
+ b.mu.Lock();defer b.mu.Unlock();b.screenShareStatus=status
+}
 func(b *ConsentBridge)screenShareRoutes(mux *http.ServeMux,guard func(http.ResponseWriter,*http.Request)bool){
+ mux.HandleFunc("GET /api/screen-share/status",func(w http.ResponseWriter,r *http.Request){
+  if !guard(w,r){return}
+  b.mu.Lock();callback:=b.screenShareStatus;stopped:=b.stopped;b.mu.Unlock()
+  state:="unavailable"
+  if stopped{state="stopped"}else if callback!=nil{state=callback()}
+  _=json.NewEncoder(w).Encode(map[string]string{"type":"screen_share_status","state":state})
+ })
  mux.HandleFunc("POST /api/screen-share/start",func(w http.ResponseWriter,r *http.Request){
   if !guard(w,r){return}
   b.mu.Lock()
