@@ -23,7 +23,9 @@ func main(){
  session:=flag.String("session","","development session identifier (required)")
  hostCapability:=flag.String("host-capability","","development host capability (enables local consent API)")
  uiAddress:=flag.String("ui-listen","127.0.0.1:0","local consent API listen address")
+ diagnostics:=flag.Bool("capture-diagnostics",false,"print local Linux screen capture prerequisites without connecting or capturing")
  flag.Parse()
+ if *diagnostics{printCaptureDiagnostics();return}
  if *session==""{log.Fatal("-session is required")}
  key,err:=identity.Generate()
  if err!=nil{log.Fatal(err)}
